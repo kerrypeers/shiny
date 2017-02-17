@@ -1,0 +1,89 @@
+---
+title: "Mortality in South Africa"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(southafricastats)
+library(dplyr)
+library(tidyr)
+library(leaflet)
+
+totals <- population_zaf %>%
+        filter(year == 2013) %>%
+        select(province, total)
+
+
+
+compare_provinces <- mortality_zaf %>%
+  left_join(totals) %>%
+  mutate(mortality = deaths / total * 1e3) %>%
+  group_by(province, indicator) %>%
+  summarise(mortality = mean(mortality,na.rm = TRUE)) %>%
+  ungroup %>%
+  left_join(totals) %>%
+  spread(indicator,mortality)
+
+
+mortality_zaf <- mortality_zaf %>%
+  filter(indicator != "All causes")
+
+
+
+```
+
+Column {.sidebar}
+=======================================================================
+This app explores mortality data from the [South African Demographic data]
+
+Use the input below to select a cause of death to explore
+
+
+```{r}
+selectInput(inputId = "indicator",
+            label = "Choose a cause of death",
+            choices = unique(mortality_zaf$indicator),
+            selected = "Influenza and pneumonia (J10-J18)")
+
+```
+
+Map {data-icon="fa-map-marker"}
+=======================================================================
+
+### Mortality rate by province
+
+```{r}
+selected_df <- reactive({
+     subset_df <-   compare_provinces[,c(1,
+                             which(colnames(compare_provinces)  == input$indicator))]
+     colnames(subset_df) <- c("province","indicator")
+     population_zaf %>%
+       filter(year == 2013) %>%
+       left_join(subset_df, by = "province") %>%
+     mutate(indicator = indicator / sum(indicator))
+  
+})
+
+renderLeaflet({
+      leaflet(selected_df()) %>%
+      addProviderTiles("CartoDB.Positron") %>%
+      addCircles(lng = ~longitude,
+                 lat = ~latitude,
+                 radius = ~sqrt(indicator) * 3e5,
+                 weight = 2.5,
+                 color = "magenta",
+                 popup = ~province)
+})
+
+```
+
+Comparing provinces
+================================
+
+##How does the selected mortality rate compare
+
